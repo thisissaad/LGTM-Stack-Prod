@@ -42,7 +42,7 @@ grafana:
       # + TLS (cert-manager) and switching this to ClusterIP instead.
 
   # ✅ Correct ENV injection (THIS is the key fix)
-  # envFromSecret: azure-ad-secret
+  envFromSecret: azure-ad-secret
 
   
   envFromSecrets:
@@ -108,37 +108,37 @@ grafana:
     ####################################
 
     auth:
-      disable_login_form: false        # Keep local login enabled alongside SSO
+      disable_login_form: true       # Keep local login enabled alongside SSO
                                        # Set to true only if you want SSO-only
       disable_signout_menu: false
       disable_brute_force_login_protection: false #cors bypass
 ##commenting out to disable azure
-    # auth.azuread:
-    #   enabled: true
-    #   name: Azure AD
-    #   allow_sign_up: true
+    auth.azuread:
+      enabled: true
+      name: Azure AD
+      allow_sign_up: true
 
-    #   client_id: "c390c733-45c5-4211-94e4-27445b8f2894"
-    #   client_secret: $__env{AZURE_CLIENT_SECRET}
+      client_id: "c390c733-45c5-4211-94e4-27445b8f2894"
+      client_secret: $__env{AZURE_CLIENT_SECRET}
       
 
-    #   scopes: "openid email profile offline_access"
+      scopes: "openid email profile offline_access"
 
-    #   auth_url: "https://login.microsoftonline.com/47049324-c498-4be5-acf7-0154448a1107/oauth2/v2.0/authorize"
-    #   token_url: "https://login.microsoftonline.com/47049324-c498-4be5-acf7-0154448a1107/oauth2/v2.0/token"
-    #   api_url: "https://graph.microsoft.com/v1.0/me"
+      auth_url: "https://login.microsoftonline.com/47049324-c498-4be5-acf7-0154448a1107/oauth2/v2.0/authorize"
+      token_url: "https://login.microsoftonline.com/47049324-c498-4be5-acf7-0154448a1107/oauth2/v2.0/token"
+      api_url: "https://graph.microsoft.com/v1.0/me"
 
-    #   login_attribute_path: "userPrincipalName"
-    #   name_attribute_path: "displayName"
-    #   email_attribute_path: "userPrincipalName"
+      login_attribute_path: "userPrincipalName"
+      name_attribute_path: "displayName"
+      email_attribute_path: "userPrincipalName"
 
-    #   auto_login: false
+      auto_login: false
 
-    #   role_attribute_path: "contains(roles[*], 'Admin') && 'Admin' || contains(roles[*], 'Editor') && 'Editor' || 'Editor'"
-    #   role_attribute_strict: false     # false = fallback to auto_assign_org_role if no match
+      role_attribute_path: "contains(roles[*], 'Admin') && 'Admin' || contains(roles[*], 'Editor') && 'Editor' || 'Editor'"
+      role_attribute_strict: false     # false = fallback to auto_assign_org_role if no match
 
-    #   # FIX #3 — Restrict to your tenant only (security)
-    #   allowed_organizations: "47049324-c498-4be5-acf7-0154448a1107"
+      # FIX #3 — Restrict to your tenant only (security)
+      allowed_organizations: "47049324-c498-4be5-acf7-0154448a1107"
 
     ####################################
     # Users — FIX #4
@@ -147,11 +147,11 @@ grafana:
     # Server
     ####################################
     ##commenting out to stop redirect
-    # server:
-    #   root_url: "https://lgtm-paas-lvs-prod-grafana.las.onezeta.global"
-    #   domain: "lgtm-paas-lvs-prod-grafana.las.onezeta.global"
-    #   cors_allow_origins: "http://bm15-01-l2tools.bo3.e-dialog.com:8888"
-    #   serve_from_sub_path: false #cors bypass
+    server:
+      root_url: "https://lgtm-paas-lvs-prod-grafana.las.onezeta.global"
+      domain: "lgtm-paas-lvs-prod-grafana.las.onezeta.global"
+      cors_allow_origins: "http://bm15-01-l2tools.bo3.e-dialog.com:8888"
+      serve_from_sub_path: false #cors bypass
 
     security:
       cookie_secure: false
