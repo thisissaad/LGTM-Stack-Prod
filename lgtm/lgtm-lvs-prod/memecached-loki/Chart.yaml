@@ -1,0 +1,12 @@
+apiVersion: v2
+name: memcached
+version: 1.0.0
+dependencies:
+  - name: memcached
+    alias: memcached-chunks
+    version: 8.7.5
+    repository: https://charts.bitnami.com/bitnami
+  - name: memcached
+    alias: memcached-results
+    version: 8.7.5
+    repository: https://charts.bitnami.com/bitnami

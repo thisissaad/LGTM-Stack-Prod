@@ -1,0 +1,29 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: lgtm-prod-tempo
+  namespace: argocd
+spec:
+  project: paas-observability
+
+  source:
+    repoURL: https://gitlabmaster-03.bo3.e-dialog.com/zks/cockpit/argocd/lgtm.git
+    targetRevision: main
+    path: tempo
+    helm:
+      releaseName: lgtm-prod-tempo   
+      skipCrds: true
+      valueFiles:
+        - values.yaml
+
+  destination:
+    server: https://10.118.174.129:6443
+    namespace: lgtm-lvs-prod             # ✅ namespace only
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - PruneLast=true

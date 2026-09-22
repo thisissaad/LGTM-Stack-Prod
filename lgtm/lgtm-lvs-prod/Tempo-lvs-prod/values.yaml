@@ -1,0 +1,57 @@
+tempo:
+  auth_enabled: false
+  service:
+    type: LoadBalancer
+    port: 4317
+    targetPort: 4317
+    annotations:
+        loadbalancer.openstack.org/algorithm: ROUND_ROBIN
+        loadbalancer.openstack.org/healthcheck-timeout: "5"
+        loadbalancer.openstack.org/healthcheck-interval: "15"
+        loadbalancer.openstack.org/keepalive-timeout: "60"
+        loadbalancer.openstack.org/network-id: "a0759b3c-7d4a-4c19-a4e4-42b202d1f821"
+        loadbalancer.openstack.org/subnet-id: "dec2cea2-89d2-4887-aede-2f71438a4430"
+        loadbalancer.openstack.org/floating-network-id: "060a8516-9b81-42b9-a60a-5118da19eee5"
+  storage:
+    trace:
+      backend: local
+      local:
+        path: /var/tempo/traces
+  config: |
+    server:
+      http_listen_port: 3200
+    distributor:
+      receivers:
+        jaeger:
+          protocols:
+            thrift_http: {}
+            grpc: {}
+        otlp:
+          protocols:
+            grpc: {}
+            http: {}
+    ingester:
+      lifecycler:
+        ring:
+          replication_factor: 1
+    compactor:
+      compaction:
+        block_retention: 24h
+    storage:
+      trace:
+        backend: local
+        local:
+          path: /var/tempo/traces
+singleBinary:
+  replicas: 1
+  persistence:
+    enabled: true
+    size: 10Gi
+    storageClass: block-pure-c50-101-az-a
+resources:
+  requests:
+    cpu: "300m"
+    memory: "512Mi"
+  limits:
+    cpu: "1"
+    memory: "1Gi"

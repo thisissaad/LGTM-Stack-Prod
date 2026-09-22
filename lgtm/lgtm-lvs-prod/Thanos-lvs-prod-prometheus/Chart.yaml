@@ -1,0 +1,10 @@
+apiVersion: v2
+name: thanos
+description: Wrapper chart for Bitnami Thanos — HA metrics + S3 long-term storage
+type: application
+version: 1.0.0
+
+dependencies:
+  - name: thanos
+    version: "17.3.1"
+    repository: "oci://registry-1.docker.io/bitnamicharts"

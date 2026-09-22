@@ -1,0 +1,29 @@
+# Static hashring for Thanos Receive.
+# Apply this BEFORE (or alongside) the updated thanos-values.yaml —
+# `receive.existingConfigmap` in values.yaml expects this to already exist.
+#
+# Endpoint count MUST match receive.replicaCount in values.yaml (3).
+# If you ever change replicaCount, update this list to match and re-apply —
+# this is a static hashring, it will not update itself.
+#
+# Naming pattern below assumes the Thanos Helm release is named "lgtm-prod-lvs-thanos"
+# (matching your existing storegateway/query naming) and deployed in the
+# "lgtm-lvs-prod" namespace. Adjust if your release name differs.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: thanos-receive-hashring
+  namespace: lgtm-lvs-prod
+data:
+  hashrings.json: |
+    [
+      {
+        "hashring": "default",
+        "endpoints": [
+          "lgtm-prod-lvs-thanos-receive-0.lgtm-prod-lvs-thanos-receive-headless.lgtm-lvs-prod.svc.cluster.local:10901",
+          "lgtm-prod-lvs-thanos-receive-1.lgtm-prod-lvs-thanos-receive-headless.lgtm-lvs-prod.svc.cluster.local:10901",
+          "lgtm-prod-lvs-thanos-receive-2.lgtm-prod-lvs-thanos-receive-headless.lgtm-lvs-prod.svc.cluster.local:10901"
+        ]
+      }
+    ]
+

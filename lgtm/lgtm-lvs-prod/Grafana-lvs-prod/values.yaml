@@ -1,0 +1,194 @@
+grafana:
+ 
+  replicas: 2
+  
+  useStatefulSet: false
+  # ---- Autoscaling (HPA) — horizontal: add PODS at high CPU, not bigger pods ----
+  autoscaling:
+    enabled: true
+    minReplicas: 2                    
+    maxReplicas: 4                    
+    targetCPU: "75"                   
+
+
+  admin:
+    user: admin
+    existingSecret: grafana-prod-admin-password   
+    userKey: admin-user
+    passwordKey: admin-password
+
+  image:
+    repository: grafana/grafana
+    tag: 12.4.4   
+    pullPolicy: IfNotPresent  
+
+  # headless service for pod-to-pod gossip (used by unified alerting HA
+  # once you scale beyond 1 replica)
+  headlessService: true
+
+  service:
+    type: LoadBalancer
+    port: 3000
+    targetPort: 3000
+    annotations:
+      loadbalancer.openstack.org/algorithm: ROUND_ROBIN
+      loadbalancer.openstack.org/healthcheck-timeout: "5"
+      loadbalancer.openstack.org/healthcheck-interval: "15"
+      loadbalancer.openstack.org/keepalive-timeout: "60"
+      loadbalancer.openstack.org/network-id: "a0759b3c-7d4a-4c19-a4e4-42b202d1f821"
+      loadbalancer.openstack.org/subnet-id: "dec2cea2-89d2-4887-aede-2f71438a4430"
+      loadbalancer.openstack.org/floating-network-id: "060a8516-9b81-42b9-a60a-5118da19eee5"
+      # Consider restricting source IPs here, or fronting with an Ingress
+      # + TLS (cert-manager) and switching this to ClusterIP instead.
+
+  # ✅ Correct ENV injection (THIS is the key fix)
+  # envFromSecret: azure-ad-secret
+
+  
+  envFromSecrets:
+    - name: grafana-postgres-secret
+
+  extraEnv:
+    - name: POD_IP
+      valueFrom:
+        fieldRef:
+          fieldPath: status.podIP
+
+  # unified alerting HA 
+  extraContainerPorts:
+    - name: gossip-tcp
+      containerPort: 9094
+      protocol: TCP
+    - name: gossip-udp
+      containerPort: 9094
+      protocol: UDP
+
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: 2000m
+      memory: 2Gi
+
+  
+  persistence:
+    enabled: false
+
+    # datasources
+  datasources:
+   datasources.yaml:
+      apiVersion: 1
+      datasources:
+        - name: Loki
+          type: loki
+          uid: loki
+          url: http://lgtm-prod-lvs-loki-gateway.lgtm-lvs-prod.svc.cluster.local:3100
+          access: proxy
+          isDefault: false
+          jsonData:
+            maxLines: 5000
+            timeout: 60
+    
+
+
+  affinity:
+    podAntiAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          podAffinityTerm:
+            labelSelector:
+              matchLabels:
+                app.kubernetes.io/name: grafana
+            topologyKey: kubernetes.io/hostname
+
+  grafana.ini:
+    ####################################
+    # Azure AD SSO
+    ####################################
+
+    auth:
+      disable_login_form: false        # Keep local login enabled alongside SSO
+                                       # Set to true only if you want SSO-only
+      disable_signout_menu: false
+      disable_brute_force_login_protection: false #cors bypass
+##commenting out to disable azure
+    # auth.azuread:
+    #   enabled: true
+    #   name: Azure AD
+    #   allow_sign_up: true
+
+    #   client_id: "c390c733-45c5-4211-94e4-27445b8f2894"
+    #   client_secret: $__env{AZURE_CLIENT_SECRET}
+      
+
+    #   scopes: "openid email profile offline_access"
+
+    #   auth_url: "https://login.microsoftonline.com/47049324-c498-4be5-acf7-0154448a1107/oauth2/v2.0/authorize"
+    #   token_url: "https://login.microsoftonline.com/47049324-c498-4be5-acf7-0154448a1107/oauth2/v2.0/token"
+    #   api_url: "https://graph.microsoft.com/v1.0/me"
+
+    #   login_attribute_path: "userPrincipalName"
+    #   name_attribute_path: "displayName"
+    #   email_attribute_path: "userPrincipalName"
+
+    #   auto_login: false
+
+    #   role_attribute_path: "contains(roles[*], 'Admin') && 'Admin' || contains(roles[*], 'Editor') && 'Editor' || 'Editor'"
+    #   role_attribute_strict: false     # false = fallback to auto_assign_org_role if no match
+
+    #   # FIX #3 — Restrict to your tenant only (security)
+    #   allowed_organizations: "47049324-c498-4be5-acf7-0154448a1107"
+
+    ####################################
+    # Users — FIX #4
+    ####################################
+    ####################################
+    # Server
+    ####################################
+    ##commenting out to stop redirect
+    # server:
+    #   root_url: "https://lgtm-paas-lvs-prod-grafana.las.onezeta.global"
+    #   domain: "lgtm-paas-lvs-prod-grafana.las.onezeta.global"
+    #   cors_allow_origins: "http://bm15-01-l2tools.bo3.e-dialog.com:8888"
+    #   serve_from_sub_path: false #cors bypass
+
+    security:
+      cookie_secure: false
+      cookie_samesite: lax
+      disable_gravatar: false
+      strict_transport_security: false
+      secret_key: "$__env{GF_SECURITY_SECRET_KEY}"
+
+    users:
+      auto_assign_org: true
+      auto_assign_org_id: 1
+      auto_assign_org_role: Viewer   # NEVER Admin — do not auto-grant admin to all SSO users
+      viewers_can_edit: false
+
+    ####################################
+    # Database — Postgres
+    ####################################
+    
+    database:
+      type: postgres
+      host: "lgtm-obs-prd-pgdb1-vip.bo3.onezeta.global:5000"
+      name: lgtm_prd_grafana
+      user: "$__env{GF_DATABASE_USER}"
+      password: "$__env{GF_DATABASE_PASSWORD}"
+      ssl_mode: disable
+
+    smtp:
+      enabled: true
+      host: mail-relay.e-dialog.com:25
+      skip_verify: false   # only set true if the relay has no valid cert and is fully trusted/internal
+      from_address: sakula@zetaglobal.com
+      from_name: Grafana
+
+    unified_alerting:
+      enabled: true
+      ha_listen_address: "${POD_IP}:9094"
+      ha_advertise_address: "${POD_IP}:9094"
+      ha_peers: "lgtm-prod-lvs-grafana-headless:9094"   
+      ha_peer_timeout: 15s
+      ha_reconnect_timeout: 2m

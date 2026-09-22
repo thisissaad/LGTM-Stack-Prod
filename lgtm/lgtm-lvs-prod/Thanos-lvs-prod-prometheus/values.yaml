@@ -1,0 +1,217 @@
+
+thanos:
+  image:
+    registry: docker.io
+    repository: bitnamilegacy/thanos
+    tag: 0.39.2-debian-12-r2
+    pullPolicy: IfNotPresent
+  existingObjstoreSecret: thanos-objstore-secret
+  # ============================================================
+  # QUERY — fan-out to sidecars + store gateway + receive
+  # Internal only. Query Frontend will expose LoadBalancer.
+  # ============================================================
+  query:
+    enabled: true
+    replicaCount: 2
+    replicaLabel:
+      - replica
+    podAnnotations:
+      prometheus.io/scrape: "true"
+      prometheus.io/port: "10902"  
+
+    stores:
+      - dnssrv+_grpc._tcp.prometheus-thanos-sidecar.lgtm-lvs-prod.svc.cluster.local
+      - dnssrv+_grpc._tcp.lgtm-prod-lvs-thanos-storegateway.lgtm-lvs-prod.svc.cluster.local
+      - dnssrv+_grpc._tcp.lgtm-prod-lvs-thanos-receive-headless.lgtm-lvs-prod.svc.cluster.local
+    autoscaling: 
+      enabled: true
+      minReplicas: 2
+      maxReplicas: 4
+      targetCPU: 70
+      targetMemory: 75
+    service:
+      type: ClusterIP
+      ports:
+        http: 9090
+        grpc: 10901
+    resources:
+      requests:
+        cpu: 500m
+        memory: 512Mi
+      limits:
+        cpu: 1500m
+        memory: 3Gi
+    # affinity:
+    #   podAntiAffinity:
+    #     preferredDuringSchedulingIgnoredDuringExecution:
+    #       - weight: 100
+    #         podAffinityTerm:
+    #           labelSelector:
+    #             matchLabels:
+    #               app.kubernetes.io/component: query
+    #           topologyKey: kubernetes.io/hostname
+  # ============================================================
+  # QUERY FRONTEND — Grafana should point here
+  # Exposed through OpenStack LoadBalancer
+  # ============================================================
+  queryFrontend:
+    enabled: true
+    replicaCount: 2
+    podAnnotations:
+      prometheus.io/scrape: "true"
+      prometheus.io/port: "9090"    
+    autoscaling:
+      enabled: true
+      minReplicas: 2
+      maxReplicas: 4
+      targetCPU: 70
+      targetMemory: 75
+    service:
+      type: LoadBalancer
+      ports:
+        http: 9090
+      annotations:
+        loadbalancer.openstack.org/algorithm: ROUND_ROBIN
+        loadbalancer.openstack.org/healthcheck-timeout: "5"
+        loadbalancer.openstack.org/healthcheck-interval: "15"
+        loadbalancer.openstack.org/keepalive-timeout: "60"
+        loadbalancer.openstack.org/network-id: "a0759b3c-7d4a-4c19-a4e4-42b202d1f821"
+        loadbalancer.openstack.org/subnet-id: "dec2cea2-89d2-4887-aede-2f71438a4430"
+        loadbalancer.openstack.org/floating-network-id: "060a8516-9b81-42b9-a60a-5118da19eee5"
+    resources:
+      requests:
+        cpu: 250m
+        memory: 256Mi
+      limits:
+        cpu: 1000m
+        memory: 1Gi
+ 
+  receive:
+    enabled: true
+    replicaCount: 3
+    replicationProtocol: protobuf
+    replicationFactor: 2
+    existingConfigmap: thanos-receive-hashring
+
+    replicaLabel: replica
+    podAnnotations:
+      prometheus.io/scrape: "true"
+      prometheus.io/port: "10902"    
+    tsdbRetention: "6h"
+    persistence:
+      enabled: true
+      size: 20Gi
+      storageClass: block-pure-c50-101-az-a
+    service:
+      type: LoadBalancer
+      additionalHeadless: true
+      ports:
+        remote: 19291
+      annotations:
+        loadbalancer.openstack.org/algorithm: ROUND_ROBIN
+        loadbalancer.openstack.org/healthcheck-timeout: "5"
+        loadbalancer.openstack.org/healthcheck-interval: "15"
+        loadbalancer.openstack.org/keepalive-timeout: "60"
+        loadbalancer.openstack.org/network-id: "a0759b3c-7d4a-4c19-a4e4-42b202d1f821"
+        loadbalancer.openstack.org/subnet-id: "dec2cea2-89d2-4887-aede-2f71438a4430"
+        loadbalancer.openstack.org/floating-network-id: "060a8516-9b81-42b9-a60a-5118da19eee5"
+    resources:
+      requests:
+        cpu: 1000m
+        memory: 2Gi
+      limits:
+        cpu: 3000m
+        memory: 8Gi
+    affinity:
+     podAntiAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+       - weight: 100
+         podAffinityTerm:
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/component: receive
+          topologyKey: kubernetes.io/hostname
+    extraFlags:
+    - --receive.forward.async-workers=30   
+    - --receive.limits-config={"write":{"global":{"max_concurrency":400},"default":{"request":{"size_bytes_limit":0,"series_limit":0,"samples_limit":0}}}}
+    - --enable-auto-gomemlimit
+    - --auto-gomemlimit.ratio=0.85
+    - --tsdb.out-of-order.time-window=1h
+  # ============================================================
+  # STORE GATEWAY — serves historical data from S3
+  # ============================================================
+  storegateway:
+    enabled: true
+    replicaCount: 2
+    podAnnotations:
+      prometheus.io/scrape: "true"
+      prometheus.io/port: "10902"  
+    persistence:
+      enabled: true
+      size: 20Gi
+      storageClass: block-pure-c50-101-az-a
+    resources:
+      requests:
+        cpu: 250m
+        memory: 1Gi
+      limits:
+        cpu: 2000m
+        memory: 6Gi
+    affinity:
+      podAntiAffinity:
+        requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchLabels:
+                app.kubernetes.io/component: storegateway
+            topologyKey: kubernetes.io/hostname
+  # ============================================================
+  # COMPACTOR — downsamples + compacts S3 blocks
+  # MUST be singleton
+  # ============================================================
+  compactor:
+    enabled: true
+    podAnnotations:
+      prometheus.io/scrape: "true"
+      prometheus.io/port: "10902"  
+    retentionResolutionRaw: 30d
+    retentionResolution5m: 90d
+    retentionResolution1h: 365d
+    persistence:
+      enabled: true
+      size: 20Gi
+      storageClass: block-pure-c50-101-az-a
+    resources:
+      requests:
+        cpu: 500m
+        memory: 1Gi
+      limits:
+        cpu: 2000m
+        memory: 2Gi
+  ruler:
+    enabled: false
+  bucketweb:
+    enabled: false
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: false
+
+  extraDeploy:
+    - |
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: thanos-receive-hashring
+        namespace: lgtm-lvs-prod
+      data:
+        hashrings.json: |
+          [
+            {
+              "hashring": "default",
+              "endpoints": [
+                "lgtm-prod-lvs-thanos-receive-0.lgtm-prod-lvs-thanos-receive-headless.lgtm-lvs-prod.svc.cluster.local:10901",
+                "lgtm-prod-lvs-thanos-receive-1.lgtm-prod-lvs-thanos-receive-headless.lgtm-lvs-prod.svc.cluster.local:10901",
+                "lgtm-prod-lvs-thanos-receive-2.lgtm-prod-lvs-thanos-receive-headless.lgtm-lvs-prod.svc.cluster.local:10901"
+              ]
+            }
+          ]

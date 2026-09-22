@@ -1,0 +1,47 @@
+memcached-chunks:
+  architecture: high-availability
+  replicaCount: 2
+  service:
+    type: ClusterIP
+    clusterIP: "None"        # forces headless -> SRV records per pod
+    ports:
+      memcached: 11211
+  resources:
+    requests:
+      cpu: 250m
+      memory: 1Gi
+    limits:
+      cpu: 1000m
+      memory: 2Gi
+  extraEnvVars:
+    - name: MEMCACHED_CACHE_SIZE
+      value: "1800"
+    - name: MEMCACHED_MAX_CONNECTIONS
+      value: "2048"
+    - name: MEMCACHED_MAX_ITEM_SIZE
+      value: "4194304"    
+  persistence:
+    enabled: false
+
+memcached-results:
+  architecture: high-availability
+  replicaCount: 2
+  service:
+    type: ClusterIP
+    clusterIP: "None"
+    ports:
+      memcached: 11211
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  extraEnvVars:
+    - name: MEMCACHED_CACHE_SIZE
+      value: "450"
+    - name: MEMCACHED_MAX_CONNECTIONS
+      value: "1024"
+  persistence:
+    enabled: false

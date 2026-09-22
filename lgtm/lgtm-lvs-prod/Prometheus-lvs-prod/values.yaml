@@ -1,0 +1,192 @@
+prometheus:
+  server:
+    replicaCount: 2
+
+    statefulSet:
+      enabled: true
+
+    retention: "2h"
+
+    extraArgs:
+      web.enable-remote-write-receiver: ""
+      storage.tsdb.min-block-duration: 2h
+      storage.tsdb.max-block-duration: 2h
+      storage.tsdb.retention.size: "10GB"
+      enable-feature: expand-external-labels
+
+    global:
+      external_labels:
+        cluster: lgtm-lvs-prod
+        replica: ${POD_NAME}
+
+    env:
+      - name: POD_NAME
+        valueFrom:
+          fieldRef:
+            fieldPath: metadata.name
+
+    sidecarContainers:
+      thanos-sidecar:
+        image: quay.io/thanos/thanos:v0.41.0
+        args:
+          - sidecar
+          - --tsdb.path=/data
+          - --prometheus.url=http://localhost:9090
+          - --grpc-address=0.0.0.0:10901
+          - --http-address=0.0.0.0:10902
+          - --objstore.config-file=/etc/thanos/objstore.yml
+        ports:
+          - name: grpc
+            containerPort: 10901
+          - name: http
+            containerPort: 10902
+        volumeMounts:
+          - name: storage-volume
+            mountPath: /data
+          - name: thanos-objstore
+            mountPath: /etc/thanos
+            readOnly: true
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+
+    extraSecretMounts:
+      - name: thanos-objstore
+        secretName: thanos-objstore-secret
+        mountPath: /etc/thanos
+        readOnly: true
+
+    persistentVolume:
+      enabled: true
+      size: 20Gi
+      storageClass: block-pure-c50-101-az-a
+
+    affinity:
+      podAntiAffinity:
+        requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchLabels:
+                app: prometheus
+            topologyKey: kubernetes.io/hostname
+
+  pushgateway:
+    enabled: false
+
+  kubeStateMetrics:
+    enabled: true
+
+  nodeExporter:
+    enabled: true
+
+  serverFiles:
+    prometheus.yml:
+      scrape_configs:
+        - job_name: "node-exporter"
+          kubernetes_sd_configs:
+            - role: endpoints
+          relabel_configs:
+            - source_labels: [__meta_kubernetes_service_name]
+              regex: .*node-exporter.*
+              action: keep
+
+        - job_name: "kube-state-metrics"
+          kubernetes_sd_configs:
+            - role: endpoints
+          relabel_configs:
+            - source_labels: [__meta_kubernetes_service_name]
+              regex: .*kube-state-metrics.*
+              action: keep
+
+        - job_name: "kubernetes-pods"
+          kubernetes_sd_configs:
+            - role: pod
+          relabel_configs:
+            - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+              action: keep
+              regex: true
+
+            - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+              action: replace
+              target_label: __metrics_path__
+              regex: (.+)
+
+            - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+              action: replace
+              regex: ([^:]+)(?::\d+)?;(\d+)
+              replacement: $1:$2
+              target_label: __address__
+
+            - action: labelmap
+              regex: __meta_kubernetes_pod_label_(.+)
+
+            - source_labels: [__meta_kubernetes_namespace]
+              action: replace
+              target_label: namespace
+
+            - source_labels: [__meta_kubernetes_pod_name]
+              action: replace
+              target_label: pod
+
+        - job_name: "kubernetes-apiservers"
+          kubernetes_sd_configs:
+            - role: endpoints
+          scheme: https
+          tls_config:
+            ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+            insecure_skip_verify: true
+          bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+          relabel_configs:
+            - source_labels:
+                - __meta_kubernetes_namespace
+                - __meta_kubernetes_service_name
+                - __meta_kubernetes_endpoint_port_name
+              action: keep
+              regex: default;kubernetes;https
+
+        - job_name: "kubernetes-nodes"
+          scheme: https
+          kubernetes_sd_configs:
+            - role: node
+          tls_config:
+            ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+            insecure_skip_verify: true
+          bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+          relabel_configs:
+            - action: labelmap
+              regex: __meta_kubernetes_node_label_(.+)
+
+            - target_label: __address__
+              replacement: kubernetes.default.svc:443
+
+            - source_labels: [__meta_kubernetes_node_name]
+              target_label: __metrics_path__
+              replacement: /api/v1/nodes/$1/proxy/metrics
+
+        - job_name: "kubernetes-cadvisor"
+          scheme: https
+          kubernetes_sd_configs:
+            - role: node
+          tls_config:
+            ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+            insecure_skip_verify: true
+          bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+          relabel_configs:
+            - action: labelmap
+              regex: __meta_kubernetes_node_label_(.+)
+
+            - target_label: __address__
+              replacement: kubernetes.default.svc:443
+
+            - source_labels: [__meta_kubernetes_node_name]
+              target_label: __metrics_path__
+              replacement: /api/v1/nodes/$1/proxy/metrics/cadvisor
+
+        - job_name: "prometheus"
+          static_configs:
+            - targets:
+                - localhost:9090            
+

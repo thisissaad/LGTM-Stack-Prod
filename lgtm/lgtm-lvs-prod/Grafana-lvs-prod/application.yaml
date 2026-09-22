@@ -1,0 +1,26 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: grafana
+  namespace: argocd
+spec:
+  project: paas-observability
+
+  source:
+    repoURL: https://gitlabmaster-03.bo3.e-dialog.com/zks/cockpit/argocd/lgtm.git
+    targetRevision: master
+    path: grafana
+    helm:
+      valueFiles:
+        - values.yaml
+
+  destination:
+    server: https://10.118.174.129:6443
+    namespace: lgtm-lvs-prod
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
